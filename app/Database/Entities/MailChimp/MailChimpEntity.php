@@ -30,9 +30,13 @@ abstract class MailChimpEntity extends Entity
     {
         $array = [];
 
-        foreach ($this->toArray() as $property => $value) {
+        foreach ($this->toArray() as $property => &$value) {
             if ($value === null) {
                 continue;
+            }
+
+            if($value instanceof \DateTime){
+                $value = $value->format('Y-m-d H:i:s');
             }
 
             $array[$property] = $value;
