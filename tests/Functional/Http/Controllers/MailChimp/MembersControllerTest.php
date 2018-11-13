@@ -14,7 +14,7 @@ class MembersControllerTest extends WithDatabaseTestCase
      * @var array
      */
     protected static $listData = [
-        'name' => 'New list',
+        'name' => 'Test list',
         'permission_reminder' => 'You signed up for updates on Greeks economy.',
         'email_type_option' => false,
         'contact' => [
@@ -43,7 +43,7 @@ class MembersControllerTest extends WithDatabaseTestCase
      * @var array
      */
     protected static $memberData = [
-        'email_address' => 'urist.mcvankab+3@freddie.com',
+        'email_address' => 'urist.mcvankab@test.com',
         'email_type' => 'text',
         'status' => 'pending',
         'merge_fields' => [
@@ -81,7 +81,25 @@ class MembersControllerTest extends WithDatabaseTestCase
     /**
      * @var array
      */
-    private $createdMembers = [];
+    private $createdMemberHashes = [];
+
+    /**
+     * @var array
+     */
+    protected static $notRequired = [
+        'email_type',
+        'merge_fields',
+        'interests',
+        'language',
+        'vip',
+        'location',
+        'marketing_permissions',
+        'ip_signup',
+        'timestamp_signup',
+        'ip_opt',
+        'timestamp_opt',
+        'tags'
+    ];
 
     /**
      * Call MailChimp to delete members and lists created during test.
@@ -96,14 +114,11 @@ class MembersControllerTest extends WithDatabaseTestCase
         foreach ($this->createdListIds as $listId) {
 
             // Delete member on MailChimp after test first
+            if(array_key_exists($listId, $this->createdMemberHashes)){
+                
+                foreach ($this->createdMemberHashes[$listId] as $hash){
 
-            if(array_key_exists($listId, $this->createdMembers)){
-
-                $createdMembers = $this->createdMembers[$listId];
-
-                foreach ($createdMembers as $subscriberHash){
-
-                    $mailChimp->delete(\sprintf('lists/%s/members/%s', $listId, $subscriberHash));
+                    $mailChimp->delete(\sprintf('lists/%s/members/%s', $listId, $hash));
                 }
             }
 
@@ -136,6 +151,7 @@ class MembersControllerTest extends WithDatabaseTestCase
         $member = $this->createTestMember($list['list_id']);
 
         $this->assertResponseOk();
+        $this->seeJson(static::$memberData);
         //$this->seeJsonStructure(static::$memberData);
         self::assertArrayHasKey('mail_chimp_id', $member);
         self::assertNotNull($member['mail_chimp_id']);
@@ -144,9 +160,58 @@ class MembersControllerTest extends WithDatabaseTestCase
     }
 
     /**
-     * Test application returns empty successful response when removing existing member.
+     * Test application returns error response with errors when member validation fails.
      *
-     * @param array $member
+     * @return void
+     */
+    public function testCreateMemberValidationFailed(): void
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        $this->post(\sprintf('/mailchimp/lists/%s/members', $list['list_id']));
+
+        $content = \json_decode($this->response->getContent(), true);
+
+        $this->assertResponseStatus(400);
+        self::assertArrayHasKey('message', $content);
+        self::assertArrayHasKey('errors', $content);
+        self::assertEquals('Invalid data given', $content['message']);
+
+        foreach (\array_keys(static::$memberData) as $key) {
+            if (\in_array($key, static::$notRequired, true)) {
+                continue;
+            }
+
+            self::assertArrayHasKey($key, $content['errors']);
+        }
+    }
+
+    /**
+     * Test application returns error response when member not found.
+     *
+     * @return void
+     */
+    public function testRemoveMemberNotFoundException(): void
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        $this->delete(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], 'invalid-member-id'));
+
+        $this->assertMemberNotFoundResponse('invalid-member-id');
+    }
+
+    /**
+     * Test application returns empty successful response when removing existing member.
      *
      * @return void
      */
@@ -173,7 +238,13 @@ class MembersControllerTest extends WithDatabaseTestCase
         self::assertEmpty(\json_decode($this->response->content(), true));
     }
 
-    public function testShowMemberSuccessfully()
+
+    /**
+     * Test application returns successful response with member data when requesting existing member.
+     *
+     * @return void
+     */
+    public function testShowMemberSuccessfully(): void
     {
         /**
          * Create test list
@@ -191,9 +262,104 @@ class MembersControllerTest extends WithDatabaseTestCase
 
         // try show member
         $this->get(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], $member['member_id']));
-        $member = \json_decode($this->response->getContent(), true);
+        $content = \json_decode($this->response->getContent(), true);
 
         $this->assertResponseOk();
+
+        foreach (static::$memberData as $key => $value) {
+            self::assertArrayHasKey($key, $content);
+            self::assertEquals($value, $content[$key]);
+        }
+    }
+
+    /**
+     * Test application returns error response when member not found.
+     *
+     * @return void
+     */
+    public function testShowMemberNotFoundException(): void
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        $this->get(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], 'invalid-member-id'));
+
+        $this->assertMemberNotFoundResponse('invalid-member-id');
+    }
+
+    public function testUpdateMemberSuccessfully()
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        /**
+         * Create test member
+         *
+         * @var array $member
+         */
+        $member = $this->createTestMember($list['list_id']);
+
+        // try update member
+        $this->put(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], $member['member_id']),
+            ['status' => 'subscribed']);
+        $content = \json_decode($this->response->content(), true);
+
+        $this->assertResponseOk();
+
+        foreach (\array_keys(static::$memberData) as $key) {
+            self::assertArrayHasKey($key, $content);
+            self::assertEquals('subscribed', $content['status']);
+        }
+    }
+
+    public function testUpdateMemberNotFoundException(): void
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        $this->put(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], 'invalid-member-id'));
+
+        $this->assertMemberNotFoundResponse('invalid-member-id');
+    }
+
+    public function testUpdateMemberValidationFailed(): void
+    {
+        /**
+         * Create test list
+         *
+         * @var array $list
+         */
+        $list = $this->createTestList();
+
+        /**
+         * Create test member
+         *
+         * @var array $member
+         */
+        $member = $this->createTestMember($list['list_id']);
+
+        $this->put(\sprintf('/mailchimp/lists/%s/members/%s', $list['list_id'], $member['member_id']),
+            ['status' => 'invalid']);
+
+        $content = \json_decode($this->response->content(), true);
+
+        $this->assertResponseStatus(400);
+        self::assertArrayHasKey('message', $content);
+        self::assertArrayHasKey('errors', $content);
+        self::assertArrayHasKey('status', $content['errors']);
+        self::assertEquals('Invalid data given', $content['message']);
     }
 
     /**
@@ -229,10 +395,26 @@ class MembersControllerTest extends WithDatabaseTestCase
 
         if (isset($member['email_address'])) {
             // Store MailChimp member' email address hash for cleaning purposes
-            $this->createdMembers[$listId] = md5(strtolower($member['email_address']));
+            $this->createdMemberHashes[$listId] = md5(strtolower($member['email_address']));
         }
 
         return $member;
+    }
+
+    /**
+     * Asserts error response when list not found.
+     *
+     * @param string $listId
+     *
+     * @return void
+     */
+    protected function assertMemberNotFoundResponse(string $memberId): void
+    {
+        $content = \json_decode($this->response->content(), true);
+
+        $this->assertResponseStatus(404);
+        self::assertArrayHasKey('message', $content);
+        self::assertEquals(\sprintf('MailChimpMember[%s] not found', $memberId), $content['message']);
     }
 
 }
