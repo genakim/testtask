@@ -459,6 +459,12 @@ class MailChimpMember extends MailChimpEntity
         $str = new Str();
 
         foreach (\get_object_vars($this) as $property => $value) {
+
+            // convert DateTime to string format
+            if($value instanceof \DateTime){
+                $value = $value->format('Y-m-d H:i:s');
+            }
+
             $array[$str->snake($property)] = $value;
         }
 
