@@ -10,6 +10,7 @@ use Mailchimp\Mailchimp;
 use Mockery;
 use Mockery\MockInterface;
 use Tests\App\TestCases\WithDatabaseTestCase;
+use Faker;
 
 abstract class MemberTestCase extends WithDatabaseTestCase
 {
@@ -106,6 +107,20 @@ abstract class MemberTestCase extends WithDatabaseTestCase
         'timestamp_opt',
         'tags'
     ];
+
+    public function setUp(): void
+    {
+        parent::setUp();
+
+        $faker = Faker\Factory::create();
+
+        /**
+         * generate email for test member
+         * to avoid error MailChimp server
+         * related to multiple action with same member
+         */
+        self::$memberData['email_address'] = $faker->email;
+    }
 
     /**
      * Call MailChimp to delete members and lists created during test.
