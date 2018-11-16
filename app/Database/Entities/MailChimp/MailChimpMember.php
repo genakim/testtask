@@ -136,7 +136,7 @@ class MailChimpMember extends MailChimpEntity
     /**
      * Set member' list id
      *
-     * @param string $list
+     * @param string $listId
      */
     public function setList(string $listId): void
     {
@@ -367,7 +367,7 @@ class MailChimpMember extends MailChimpEntity
     /**
      * Set member' timestamp signup
      *
-     * @param \DateTime $timestampSignup
+     * @param string $timestampSignup
      *
      * @return MailChimpMember
      */
